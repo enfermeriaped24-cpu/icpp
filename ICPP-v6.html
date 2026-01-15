@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ICPP Cloud - Sistema de Gestión Pediátrica</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #f0f4f8; padding: 15px; color: #333; margin-bottom: 120px; }
+        .container { max-width: 800px; margin: auto; background: white; padding: 25px; border-radius: 15px; box-shadow: 0 5px 20px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #2c3e50; margin-bottom: 5px; }
+        .sub { text-align: center; color: #7f8c8d; font-size: 0.9rem; margin-bottom: 25px; }
+        
+        .input-group { margin-bottom: 20px; }
+        input { width: 100%; padding: 15px; border: 2px solid #d1d8e0; border-radius: 10px; font-size: 1.1rem; box-sizing: border-box; outline: none; transition: 0.3s; }
+        input:focus { border-color: #3498db; }
+
+        .item { margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 10px; border: 1px solid #e1e8ed; }
+        .item-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .item-title { font-weight: bold; color: #2c3e50; font-size: 1.05rem; }
+        
+        .options { display: flex; gap: 8px; }
+        button.opt { flex: 1; padding: 12px; border: 1px solid #bdc3c7; background: white; cursor: pointer; border-radius: 8px; font-weight: bold; transition: 0.2s; }
+        button.opt.active { background: #3498db; color: white; border-color: #2980b9; transform: scale(1.05); }
+
+        /* Referencias de valores */
+        .referencia { margin-top: 10px; font-size: 0.8rem; color: #666; display: grid; grid-template-columns: 1fr 1fr; gap: 5px; padding: 8px; background: #fff; border-radius: 5px; border: 1px dashed #ccc; }
+        .ref-val { font-weight: bold; color: #3498db; }
+
+        #result-panel { background: #2c3e50; color: white; padding: 20px; border-radius: 12px; text-align: center; position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); width: 90%; max-width: 760px; box-shadow: 0 -5px 20px rgba(0,0,0,0.2); z-index: 1000; }
+        .score-val { font-size: 2rem; font-weight: bold; color: #2ecc71; }
+        .cat-text { font-size: 1.1rem; margin-bottom: 10px; font-weight: 300; }
+        .btn-save { background: #2ecc71; color: white; border: none; padding: 15px; border-radius: 8px; font-size: 1.1rem; font-weight: bold; cursor: pointer; width: 100%; transition: 0.3s; }
+        .btn-save:hover { background: #27ae60; }
+        .btn-save:disabled { background: #95a5a6; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🏥 ICPP Cloud</h1>
+    <div class="sub">Instrumento de Clasificación de Pacientes Pediátricos</div>
+    
+    <div class="input-group">
+        <input type="text" id="p-name" placeholder="Nombre del Paciente / Cama / ID">
+    </div>
+
+    <div id="quiz"></div>
+</div>
+
+<div id="result-panel">
+    <div>Puntaje Total: <span class="score-val" id="score">11</span></div>
+    <div id="cat-text" class="cat-text">Nivel 1: Cuidados Mínimos</div>
+    <button id="btn-submit" class="btn-save" onclick="enviarAGoogle()">☁️ GUARDAR EVALUACIÓN</button>
+</div>
+
+<script>
+    // URL DE TU GOOGLE SCRIPT (APP WEB)
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxmnuhLOpFaZieApIKus2iBFtZfglElG6rKz9UlTOjy-SSoQx1i0KqB_MOm7kQ0RYCgdw/exec"; 
+
+    const indicadores = [
+        { nombre: "Actividad", refs: ["Espontánea", "Disminuida", "Restringida", "Incapaz/Coma"] },
+        { nombre: "Controles Vitales", refs: ["Cada 6h o más", "Cada 4h", "Cada 2h", "Continuo/Horario"] },
+        { nombre: "Oxigenación", refs: ["Aire Ambiente", "Bajo Flujo (CN)", "Alto Flujo/VNI", "ARM (Ventilación)"] },
+        { nombre: "Terapéutica EV", refs: ["Ninguna", "Intermitente", "Continua", "Múltiples bombas"] },
+        { nombre: "Medicamentos", refs: ["Oral/Tópico", "EV c/6h", "EV c/4h", "Protocolos críticos"] },
+        { nombre: "Integridad Cutánea", refs: ["Piel Sana", "Riesgo (Braden)", "Lesión superficial", "Lesión profunda"] },
+        { nombre: "Alimentación", refs: ["Por boca", "Asistida/SNG", "SOG/SNE Cont.", "NPT (Parenteral)"] },
+        { nombre: "Eliminación", refs: ["Controla/Pañal", "Sonda fija", "Balance estricto", "Diálisis/Falla"] },
+        { nombre: "Higiene", refs: ["Autónomo", "Ayuda parcial", "En cama (1 enf)", "En cama (2 pers)"] },
+        { nombre: "Movilidad", refs: ["Deambula", "Silla/Ayuda", "Reposo absoluto", "Tracción/Inmóvil"] },
+        { nombre: "Apoyo Emocional", refs: ["Normal", "Ansiedad leve", "Crisis familiar", "Crítico/Duelo"] }
+    ];
+
+    let scores = new Array(11).fill(1);
+
+    function render() {
+        const quiz = document.getElementById('quiz');
+        quiz.innerHTML = indicadores.map((ind, i) => `
+            <div class="item">
+                <div class="item-header">
+                    <span class="item-title">${i+1}. ${ind.nombre}</span>
+                </div>
+                <div class="options">
+                    ${[1,2,3,4].map(v => `
+                        <button class="opt ${scores[i]===v?'active':''}" onclick="set(${i},${v})">${v}</button>
+                    `).join('')}
+                </div>
+                <div class="referencia">
+                    ${ind.refs.map((r, idx) => `
+                        <div><span class="ref-val">${idx+1}:</span> ${r}</div>
+                    `).join('')}
+                </div>
+            </div>
+        `).join('');
+        calc();
+    }
+
+    window.set = (i,v) => { scores[i]=v; render(); };
+
+    function calc() {
+        const total = scores.reduce((a,b)=>a+b,0);
+        document.getElementById('score').innerText = total;
+        let txt = "";
+        if(total<=17) txt="Nivel 1: Cuidados Mínimos";
+        else if(total<=24) txt="Nivel 2: Cuidados Intermedios";
+        else if(total<=31) txt="Nivel 3: Alta Dependencia";
+        else if(total<=38) txt="Nivel 4: Cuidados Semi-intensivos";
+        else txt="Nivel 5: Cuidados Intensivos";
+        document.getElementById('cat-text').innerText = txt;
+    }
+
+    function enviarAGoogle() {
+        const name = document.getElementById('p-name').value;
+        if(!name) { alert("Por favor, ingrese identificación del paciente"); return; }
+        
+        const btn = document.getElementById('btn-submit');
+        btn.disabled = true;
+        btn.innerText = "⏳ ENVIANDO...";
+
+        const total = document.getElementById('score').innerText;
+        const nivel = document.getElementById('cat-text').innerText;
+        const url = `${SCRIPT_URL}?accion=guardar&paciente=${encodeURIComponent(name)}&puntos=${total}&nivel=${encodeURIComponent(nivel)}&detalle=${scores.join('-')}`;
+
+        fetch(url, { mode: 'no-cors' })
+        .then(() => {
+            alert("✅ ¡Datos impactados en la nube!\nPaciente: " + name);
+            document.getElementById('p-name').value = "";
+            scores.fill(1);
+            render();
+        })
+        .catch(err => alert("❌ Error de conexión"))
+        .finally(() => {
+            btn.disabled = false;
+            btn.innerText = "☁️ GUARDAR EVALUACIÓN";
+        });
+    }
+
+    render();
+</script>
+</body>
+</html>
